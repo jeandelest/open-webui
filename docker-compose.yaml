@@ -7,6 +7,18 @@ services:
 #    tty: true
 #    restart: unless-stopped
 #    image: ollama/ollama:${OLLAMA_DOCKER_TAG-latest}
+  db:
+    image: postgres:16
+    restart: always
+    ports:
+      - "172.17.0.1:${DB_PORT}:5432"
+    environment:
+      - 'POSTGRES_USER=${DB_USER}'
+      - 'POSTGRES_PASSWORD=${DB_PASSWORD}'
+    volumes:
+      - /volume/db/pg_data:/var/lib/postgresql/data
+      - ./db/pg/create-db.sql:/docker-entrypoint-initdb.d/create-db.sql # init db if not exist
+    network_mode: bridge
 
   open-webui:
     build:
@@ -24,11 +36,14 @@ services:
     #   - ${OPEN_WEBUI_PORT-3000}:8080
     environment:
       - 'OLLAMA_BASE_URL=http://api.ollama.local'
+      - 'DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}'
       - 'WEBUI_SECRET_KEY='
     # extra_hosts:
     #   - host.docker.internal:host-gateway
     network_mode: "host"
     restart: unless-stopped
+    depends_on:
+      - db
 
 # volumes:
   # ollama: {}
