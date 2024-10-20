@@ -26,6 +26,7 @@
 	import { chats } from '$lib/stores';
 	import { createMessagesList } from '$lib/utils';
 	import { downloadChatAsPDF } from '$lib/apis/utils';
+	import Download from '$lib/components/icons/Download.svelte';
 
 	const i18n = getContext('i18n');
 
@@ -50,12 +51,7 @@
 		pinned = await getChatPinnedStatusById(localStorage.token, chatId);
 	};
 
-	const getChatAsText = async () => {
-		const chat = await getChatById(localStorage.token, chatId);
-		if (!chat) {
-			return;
-		}
-
+	const getChatAsText = async (chat) => {
 		const history = chat.chat.history;
 		const messages = createMessagesList(history, history.currentId);
 		const chatText = messages.reduce((a, message, i, arr) => {
@@ -66,8 +62,12 @@
 	};
 
 	const downloadTxt = async () => {
-		const chatText = await getChatAsText();
+		const chat = await getChatById(localStorage.token, chatId);
+		if (!chat) {
+			return;
+		}
 
+		const chatText = await getChatAsText(chat);
 		let blob = new Blob([chatText], {
 			type: 'text/plain'
 		});
@@ -134,7 +134,7 @@
 
 	<div slot="content">
 		<DropdownMenu.Content
-			class="w-full max-w-[180px] rounded-xl px-1 py-1.5 z-50 bg-white dark:bg-gray-850 dark:text-white shadow-xl"
+			class="w-full max-w-[200px] rounded-xl px-1 py-1.5 z-50 bg-white dark:bg-gray-850 dark:text-white shadow-xl"
 			sideOffset={-2}
 			side="bottom"
 			align="start"
@@ -199,20 +199,7 @@
 				<DropdownMenu.SubTrigger
 					class="flex gap-2 items-center px-3 py-2 text-sm  cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-md"
 				>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						fill="none"
-						viewBox="0 0 24 24"
-						stroke-width="1.5"
-						stroke="currentColor"
-						class="size-4"
-					>
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
-						/>
-					</svg>
+					<Download strokeWidth="2" />
 
 					<div class="flex items-center">{$i18n.t('Download')}</div>
 				</DropdownMenu.SubTrigger>
@@ -258,7 +245,7 @@
 				<div class="flex items-center">{$i18n.t('Delete')}</div>
 			</DropdownMenu.Item>
 
-			<hr class="border-gray-100 dark:border-gray-800 mt-1 mb-1" />
+			<hr class="border-gray-50 dark:border-gray-850 my-0.5" />
 
 			<div class="flex p-1">
 				<Tags

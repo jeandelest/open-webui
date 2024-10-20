@@ -58,13 +58,7 @@
 	let shiftKey = false;
 
 	let selectedChatId = null;
-	let deleteChat = null;
-
-	let showDeleteConfirm = false;
 	let showDropdown = false;
-
-	let selectedTagName = null;
-
 	let showPinnedChat = true;
 
 	// Pagination variables
@@ -157,7 +151,12 @@
 
 		currentChatPage.set(1);
 		allChatsLoaded = false;
-		await chats.set(await getChatList(localStorage.token, $currentChatPage));
+
+		if (search) {
+			await chats.set(await getChatListBySearchText(localStorage.token, search, $currentChatPage));
+		} else {
+			await chats.set(await getChatList(localStorage.token, $currentChatPage));
+		}
 
 		// Enable pagination
 		scrollPaginationEnabled.set(true);
@@ -188,7 +187,6 @@
 	const searchDebounceHandler = async () => {
 		console.log('search', search);
 		chats.set(null);
-		selectedTagName = null;
 
 		if (searchDebounceTimeout) {
 			clearTimeout(searchDebounceTimeout);
@@ -199,6 +197,7 @@
 			return;
 		} else {
 			searchDebounceTimeout = setTimeout(async () => {
+				allChatsLoaded = false;
 				currentChatPage.set(1);
 				await chats.set(await getChatListBySearchText(localStorage.token, search));
 
@@ -243,11 +242,9 @@
 	const tagEventHandler = async (type, tagName, chatId) => {
 		console.log(type, tagName, chatId);
 		if (type === 'delete') {
-			currentChatPage.set(1);
-			await chats.set(await getChatListBySearchText(localStorage.token, search, $currentChatPage));
+			initChatList();
 		} else if (type === 'add') {
-			currentChatPage.set(1);
-			await chats.set(await getChatListBySearchText(localStorage.token, search, $currentChatPage));
+			initChatList();
 		}
 	};
 
@@ -656,7 +653,7 @@
 
 				<Folder
 					collapsible={!search}
-					className="px-2"
+					className="px-2 mt-0.5"
 					name={$i18n.t('All chats')}
 					on:import={(e) => {
 						importChatHandler(e.detail);
