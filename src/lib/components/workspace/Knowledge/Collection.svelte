@@ -124,6 +124,11 @@
 			itemId: tempItemId
 		};
 
+		if (fileItem.size == 0) {
+			toast.error($i18n.t('You cannot upload an empty file.'));
+			return null;
+		}
+
 		knowledge.files = [...(knowledge.files ?? []), fileItem];
 
 		// Check if the file is an audio file and transcribe/convert it to text file
