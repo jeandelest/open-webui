@@ -12,8 +12,11 @@
 
 	export let open = false;
 	export let className = '';
-	export let buttonClassName = 'w-fit';
+	export let buttonClassName =
+		'w-fit text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition';
 	export let title = null;
+
+	export let grow = false;
 
 	export let disabled = false;
 	export let hide = false;
@@ -31,8 +34,8 @@
 				}
 			}}
 		>
-			<div class=" w-fit font-medium transition flex items-center justify-between gap-2">
-				<div>
+			<div class=" w-full font-medium flex items-center justify-between gap-2">
+				<div class="">
 					{title}
 				</div>
 
@@ -56,17 +59,30 @@
 				}
 			}}
 		>
-			<div
-				class="flex items-center gap-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition"
-			>
+			<div>
 				<slot />
+
+				{#if grow}
+					{#if open && !hide}
+						<div
+							transition:slide={{ duration: 300, easing: quintOut, axis: 'y' }}
+							on:pointerup={(e) => {
+								e.stopPropagation();
+							}}
+						>
+							<slot name="content" />
+						</div>
+					{/if}
+				{/if}
 			</div>
 		</div>
 	{/if}
 
-	{#if open && !hide}
-		<div transition:slide={{ duration: 300, easing: quintOut, axis: 'y' }}>
-			<slot name="content" />
-		</div>
+	{#if !grow}
+		{#if open && !hide}
+			<div transition:slide={{ duration: 300, easing: quintOut, axis: 'y' }}>
+				<slot name="content" />
+			</div>
+		{/if}
 	{/if}
 </div>

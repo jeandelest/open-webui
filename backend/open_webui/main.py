@@ -7,6 +7,7 @@ import os
 import shutil
 import sys
 import time
+import random
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -23,7 +24,7 @@ from fastapi import (
     status,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy import text
@@ -57,7 +58,7 @@ from open_webui.apps.webui.internal.db import Session
 from open_webui.apps.webui.main import (
     app as webui_app,
     generate_function_chat_completion,
-    get_pipe_models,
+    get_all_models as get_open_webui_models,
 )
 from open_webui.apps.webui.models.functions import Functions
 from open_webui.apps.webui.models.models import Models
@@ -121,6 +122,7 @@ from open_webui.utils.task import (
     moa_response_generation_template,
     tags_generation_template,
     search_query_generation_template,
+    emoji_generation_template,
     title_generation_template,
     tools_function_calling_generation_template,
 )
@@ -904,11 +906,9 @@ webui_app.state.EMBEDDING_FUNCTION = retrieval_app.state.EMBEDDING_FUNCTION
 
 async def get_all_models():
     # TODO: Optimize this function
-    pipe_models = []
+    open_webui_models = []
     openai_models = []
     ollama_models = []
-
-    pipe_models = await get_pipe_models()
 
     if app.state.config.ENABLE_OPENAI_API:
         openai_models = await get_openai_models()
@@ -928,7 +928,13 @@ async def get_all_models():
             for model in ollama_models["models"]
         ]
 
-    models = pipe_models + openai_models + ollama_models
+    open_webui_models = await get_open_webui_models()
+
+    models = open_webui_models + openai_models + ollama_models
+
+    # If there are no models, return an empty list
+    if len([model for model in models if model["owned_by"] != "arena"]) == 0:
+        return []
 
     global_action_ids = [
         function.id for function in Functions.get_global_action_functions()
@@ -1076,7 +1082,9 @@ async def get_models(user=Depends(get_verified_user)):
 
 
 @app.post("/api/chat/completions")
-async def generate_chat_completions(form_data: dict, user=Depends(get_verified_user)):
+async def generate_chat_completions(
+    form_data: dict, user=Depends(get_verified_user), bypass_filter: bool = False
+):
     model_id = form_data["model"]
 
     if model_id not in app.state.MODELS:
@@ -1085,7 +1093,7 @@ async def generate_chat_completions(form_data: dict, user=Depends(get_verified_u
             detail="Model not found",
         )
 
-    if app.state.config.ENABLE_MODEL_FILTER:
+    if not bypass_filter and app.state.config.ENABLE_MODEL_FILTER:
         if user.role == "user" and model_id not in app.state.config.MODEL_FILTER_LIST:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -1093,6 +1101,53 @@ async def generate_chat_completions(form_data: dict, user=Depends(get_verified_u
             )
 
     model = app.state.MODELS[model_id]
+
+    if model["owned_by"] == "arena":
+        model_ids = model.get("info", {}).get("meta", {}).get("model_ids")
+        filter_mode = model.get("info", {}).get("meta", {}).get("filter_mode")
+        if model_ids and filter_mode == "exclude":
+            model_ids = [
+                model["id"]
+                for model in await get_all_models()
+                if model.get("owned_by") != "arena"
+                and not model.get("info", {}).get("meta", {}).get("hidden", False)
+                and model["id"] not in model_ids
+            ]
+
+        selected_model_id = None
+        if isinstance(model_ids, list) and model_ids:
+            selected_model_id = random.choice(model_ids)
+        else:
+            model_ids = [
+                model["id"]
+                for model in await get_all_models()
+                if model.get("owned_by") != "arena"
+                and not model.get("info", {}).get("meta", {}).get("hidden", False)
+            ]
+            selected_model_id = random.choice(model_ids)
+
+        form_data["model"] = selected_model_id
+
+        if form_data.get("stream") == True:
+
+            async def stream_wrapper(stream):
+                yield f"data: {json.dumps({'selected_model_id': selected_model_id})}\n\n"
+                async for chunk in stream:
+                    yield chunk
+
+            response = await generate_chat_completions(
+                form_data, user, bypass_filter=True
+            )
+            return StreamingResponse(
+                stream_wrapper(response.body_iterator), media_type="text/event-stream"
+            )
+        else:
+            return {
+                **(
+                    await generate_chat_completions(form_data, user, bypass_filter=True)
+                ),
+                "selected_model_id": selected_model_id,
+            }
     if model.get("pipe"):
         return await generate_function_chat_completion(form_data, user=user)
     if model["owned_by"] == "ollama":
@@ -1472,7 +1527,7 @@ async def generate_title(form_data: dict, user=Depends(get_verified_user)):
     if app.state.config.TITLE_GENERATION_PROMPT_TEMPLATE != "":
         template = app.state.config.TITLE_GENERATION_PROMPT_TEMPLATE
     else:
-        template = """Create a concise, 3-5 word title with an emoji as a title for the prompt in the given language. Suitable Emojis for the summary can be used to enhance understanding but avoid quotation marks or special formatting. RESPOND ONLY WITH THE TITLE TEXT.
+        template = """Create a concise, 3-5 word title with an emoji as a title for the chat history, in the given language. Suitable Emojis for the summary can be used to enhance understanding but avoid quotation marks or special formatting. RESPOND ONLY WITH THE TITLE TEXT.
 
 Examples of titles:
 📉 Stock Market Trends
@@ -1482,11 +1537,13 @@ Remote Work Productivity Tips
 Artificial Intelligence in Healthcare
 🎮 Video Game Development Insights
 
-Prompt: {{prompt:middletruncate:8000}}"""
+<chat_history>
+{{MESSAGES:END:2}}
+</chat_history>"""
 
     content = title_generation_template(
         template,
-        form_data["prompt"],
+        form_data["messages"],
         {
             "name": user.name,
             "location": user.info.get("location") if user.info else None,
@@ -1698,7 +1755,7 @@ Your task is to reflect the speaker's likely facial expression through a fitting
 
 Message: """{{prompt}}"""
 '''
-    content = title_generation_template(
+    content = emoji_generation_template(
         template,
         form_data["prompt"],
         {

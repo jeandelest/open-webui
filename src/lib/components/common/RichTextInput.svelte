@@ -30,6 +30,7 @@
 	export let id = '';
 	export let value = '';
 	export let placeholder = 'Type here...';
+	export let trim = false;
 
 	let element: HTMLElement; // Element where ProseMirror will attach
 	let state;
@@ -128,7 +129,11 @@
 	// Utility function to convert ProseMirror content back to markdown text
 	function serializeEditorContent(doc) {
 		const markdown = customMarkdownSerializer.serialize(doc);
-		return unescapeMarkdown(markdown);
+		if (trim) {
+			return unescapeMarkdown(markdown).trim();
+		} else {
+			return unescapeMarkdown(markdown);
+		}
 	}
 
 	// ---- Input Rules ----
@@ -163,11 +168,12 @@
 	}
 
 	function boldRule(schema) {
-		return markInputRule(/\*([^*]+)\*/, schema.marks.strong);
+		return markInputRule(/(?<=^|\s)\*([^*]+)\*(?=\s|$)/, schema.marks.strong);
 	}
 
 	function italicRule(schema) {
-		return markInputRule(/\_([^*]+)\_/, schema.marks.em);
+		// Using lookbehind and lookahead to prevent the space from being consumed
+		return markInputRule(/(?<=^|\s)_([^*_]+)_(?=\s|$)/, schema.marks.em);
 	}
 
 	// Initialize Editor State and View
