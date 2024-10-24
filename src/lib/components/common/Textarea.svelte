@@ -15,9 +15,14 @@
 	onMount(async () => {
 		await tick();
 		if (textareaElement) {
+			await tick();
 			setTimeout(adjustHeight, 0);
 		}
 	});
+
+	$: if (value) {
+		setTimeout(adjustHeight, 0);
+	}
 
 	const adjustHeight = () => {
 		if (textareaElement) {
@@ -32,6 +37,7 @@
 	bind:value
 	{placeholder}
 	on:input={adjustHeight}
+	on:focus={adjustHeight}
 	class={className}
 	{rows}
 	{required}
