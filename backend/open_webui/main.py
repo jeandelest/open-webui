@@ -439,9 +439,20 @@ async def chat_completion_tools_handler(
             tool_function_params = result.get("parameters", {})
 
             try:
-                tool_output = await tools[tool_function_name]["callable"](
-                    **tool_function_params
+                required_params = (
+                    tools[tool_function_name]
+                    .get("spec", {})
+                    .get("parameters", {})
+                    .get("required", [])
                 )
+                tool_function = tools[tool_function_name]["callable"]
+                tool_function_params = {
+                    k: v
+                    for k, v in tool_function_params.items()
+                    if k in required_params
+                }
+                tool_output = await tool_function(**tool_function_params)
+
             except Exception as e:
                 tool_output = str(e)
 
@@ -1154,7 +1165,9 @@ async def generate_chat_completions(
         # Using /ollama/api/chat endpoint
         form_data = convert_payload_openai_to_ollama(form_data)
         form_data = GenerateChatCompletionForm(**form_data)
-        response = await generate_ollama_chat_completion(form_data=form_data, user=user)
+        response = await generate_ollama_chat_completion(
+            form_data=form_data, user=user, bypass_filter=True
+        )
         if form_data.stream:
             response.headers["content-type"] = "text/event-stream"
             return StreamingResponse(

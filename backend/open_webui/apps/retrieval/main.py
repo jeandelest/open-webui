@@ -14,6 +14,7 @@ from typing import Iterator, Optional, Sequence, Union
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+import tiktoken
 
 
 from open_webui.storage.provider import Storage
@@ -36,6 +37,7 @@ from open_webui.apps.retrieval.web.serper import search_serper
 from open_webui.apps.retrieval.web.serply import search_serply
 from open_webui.apps.retrieval.web.serpstack import search_serpstack
 from open_webui.apps.retrieval.web.tavily import search_tavily
+from open_webui.apps.retrieval.web.bing import search_bing
 
 
 from open_webui.apps.retrieval.utils import (
@@ -95,10 +97,11 @@ from open_webui.config import (
     TIKA_SERVER_URL,
     UPLOAD_DIR,
     YOUTUBE_LOADER_LANGUAGE,
+    DEFAULT_LOCALE,
     AppConfig,
 )
 from open_webui.constants import ERROR_MESSAGES
-from open_webui.env import SRC_LOG_LEVELS, DEVICE_TYPE, DOCKER
+from open_webui.env import SRC_LOG_LEVELS, DEVICE_TYPE, DOCKER, BING_SEARCH_V7_ENDPOINT, BING_SEARCH_V7_SUBSCRIPTION_KEY
 from open_webui.utils.misc import (
     calculate_sha256,
     calculate_sha256_string,
@@ -172,7 +175,6 @@ app.state.config.SEARCHAPI_API_KEY = SEARCHAPI_API_KEY
 app.state.config.SEARCHAPI_ENGINE = SEARCHAPI_ENGINE
 app.state.config.RAG_WEB_SEARCH_RESULT_COUNT = RAG_WEB_SEARCH_RESULT_COUNT
 app.state.config.RAG_WEB_SEARCH_CONCURRENT_REQUESTS = RAG_WEB_SEARCH_CONCURRENT_REQUESTS
-
 
 def update_embedding_model(
     embedding_model: str,
@@ -666,8 +668,13 @@ def save_docs_to_vector_db(
                 add_start_index=True,
             )
         elif app.state.config.TEXT_SPLITTER == "token":
+            log.info(
+                f"Using token text splitter: {app.state.config.TIKTOKEN_ENCODING_NAME}"
+            )
+
+            tiktoken.get_encoding(str(app.state.config.TIKTOKEN_ENCODING_NAME))
             text_splitter = TokenTextSplitter(
-                encoding_name=app.state.config.TIKTOKEN_ENCODING_NAME,
+                encoding_name=str(app.state.config.TIKTOKEN_ENCODING_NAME),
                 chunk_size=app.state.config.CHUNK_SIZE,
                 chunk_overlap=app.state.config.CHUNK_OVERLAP,
                 add_start_index=True,
@@ -1127,6 +1134,15 @@ def search_web(engine: str, query: str) -> list[SearchResult]:
             raise Exception("No SEARCHAPI_API_KEY found in environment variables")
     elif engine == "jina":
         return search_jina(query, app.state.config.RAG_WEB_SEARCH_RESULT_COUNT)
+    elif engine == "bing":
+        return search_bing(
+            BING_SEARCH_V7_SUBSCRIPTION_KEY,            
+            BING_SEARCH_V7_ENDPOINT,
+            str(DEFAULT_LOCALE),
+            query,
+            app.state.config.RAG_WEB_SEARCH_RESULT_COUNT,
+            app.state.config.RAG_WEB_SEARCH_DOMAIN_FILTER_LIST,
+        )
     else:
         raise Exception("No search engine API key found in environment variables")
 
