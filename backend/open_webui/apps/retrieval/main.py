@@ -598,7 +598,9 @@ async def update_rag_config(form_data: ConfigUpdateForm, user=Depends(get_admin_
         app.state.config.BRAVE_SEARCH_API_KEY = (
             form_data.web.search.brave_search_api_key
         )
-        app.state.config.MOJEEK_SEARCH_API_KEY = form_data.web.search.mojeek_search_api_key
+        app.state.config.MOJEEK_SEARCH_API_KEY = (
+            form_data.web.search.mojeek_search_api_key
+        )
         app.state.config.SERPSTACK_API_KEY = form_data.web.search.serpstack_api_key
         app.state.config.SERPSTACK_HTTPS = form_data.web.search.serpstack_https
         app.state.config.SERPER_API_KEY = form_data.web.search.serper_api_key
@@ -891,19 +893,17 @@ def process_file(
             # Update the content in the file
             # Usage: /files/{file_id}/data/content/update
 
-            VECTOR_DB_CLIENT.delete(
-                collection_name=f"file-{file.id}",
-                filter={"file_id": file.id},
-            )
+            VECTOR_DB_CLIENT.delete_collection(collection_name=f"file-{file.id}")
 
             docs = [
                 Document(
                     page_content=form_data.content,
                     metadata={
-                        "name": file.meta.get("name", file.filename),
+                        **file.meta,
+                        "name": file.filename,
                         "created_by": file.user_id,
                         "file_id": file.id,
-                        **file.meta,
+                        "source": file.filename,
                     },
                 )
             ]
@@ -930,10 +930,11 @@ def process_file(
                     Document(
                         page_content=file.data.get("content", ""),
                         metadata={
-                            "name": file.meta.get("name", file.filename),
+                            **file.meta,
+                            "name": file.filename,
                             "created_by": file.user_id,
                             "file_id": file.id,
-                            **file.meta,
+                            "source": file.filename,
                         },
                     )
                 ]
@@ -953,15 +954,30 @@ def process_file(
                 docs = loader.load(
                     file.filename, file.meta.get("content_type"), file_path
                 )
+
+                docs = [
+                    Document(
+                        page_content=doc.page_content,
+                        metadata={
+                            **doc.metadata,
+                            "name": file.filename,
+                            "created_by": file.user_id,
+                            "file_id": file.id,
+                            "source": file.filename,
+                        },
+                    )
+                    for doc in docs
+                ]
             else:
                 docs = [
                     Document(
                         page_content=file.data.get("content", ""),
                         metadata={
+                            **file.meta,
                             "name": file.filename,
                             "created_by": file.user_id,
                             "file_id": file.id,
-                            **file.meta,
+                            "source": file.filename,
                         },
                     )
                 ]
@@ -982,7 +998,7 @@ def process_file(
                 collection_name=collection_name,
                 metadata={
                     "file_id": file.id,
-                    "name": file.meta.get("name", file.filename),
+                    "name": file.filename,
                     "hash": hash,
                 },
                 add=(True if form_data.collection_name else False),
@@ -999,7 +1015,7 @@ def process_file(
                 return {
                     "status": True,
                     "collection_name": collection_name,
-                    "filename": file.meta.get("name", file.filename),
+                    "filename": file.filename,
                     "content": text_content,
                 }
         except Exception as e:

@@ -1,7 +1,10 @@
 <script lang="ts">
 	import { marked } from 'marked';
 	import TurndownService from 'turndown';
-	const turndownService = new TurndownService();
+	const turndownService = new TurndownService({
+		codeBlockStyle: 'fenced'
+	});
+	turndownService.escape = (string) => string;
 
 	import { onMount, onDestroy } from 'svelte';
 	import { createEventDispatcher } from 'svelte';
@@ -35,6 +38,10 @@
 
 	let element;
 	let editor;
+
+	const options = {
+		throwOnError: false
+	};
 
 	// Function to find the next template in the document
 	function findNextTemplate(doc, from = 0) {
@@ -112,7 +119,25 @@
 		}
 	};
 
-	onMount(() => {
+	onMount(async () => {
+		async function tryParse(value, attempts = 3, interval = 100) {
+			try {
+				// Try parsing the value
+				return marked.parse(value);
+			} catch (error) {
+				// If no attempts remain, fallback to plain text
+				if (attempts <= 1) {
+					return value;
+				}
+				// Wait for the interval, then retry
+				await new Promise((resolve) => setTimeout(resolve, interval));
+				return tryParse(value, attempts - 1, interval); // Recursive call
+			}
+		}
+
+		// Usage example
+		let content = await tryParse(value);
+
 		editor = new Editor({
 			element: element,
 			extensions: [
@@ -124,7 +149,7 @@
 				Typography,
 				Placeholder.configure({ placeholder })
 			],
-			content: marked.parse(value),
+			content: content,
 			autofocus: true,
 			onTransaction: () => {
 				// force re-render so `editor.isActive` works as expected
@@ -132,7 +157,11 @@
 
 				const newValue = turndownService.turndown(editor.getHTML());
 				if (value !== newValue) {
-					value = newValue; // Trigger parent updates
+					value = newValue;
+
+					if (value === '') {
+						editor.commands.clearContent();
+					}
 				}
 			},
 			editorProps: {
