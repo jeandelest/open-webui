@@ -531,9 +531,16 @@ async def chat_completion_files_handler(
             queries_response = queries_response["choices"][0]["message"]["content"]
 
             try:
+                bracket_start = queries_response.find("{")
+                bracket_end = queries_response.rfind("}") + 1
+
+                if bracket_start == -1 or bracket_end == -1:
+                    raise Exception("No JSON object found in the response")
+
+                queries_response = queries_response[bracket_start:bracket_end]
                 queries_response = json.loads(queries_response)
             except Exception as e:
-                queries_response = {"queries": []}
+                queries_response = {"queries": [queries_response]}
 
             queries = queries_response.get("queries", [])
         except Exception as e:
@@ -1193,6 +1200,14 @@ async def get_models(user=Depends(get_verified_user)):
         for model in models
         if "pipeline" not in model or model["pipeline"].get("type", None) != "filter"
     ]
+
+    model_order_list = webui_app.state.config.MODEL_ORDER_LIST
+    if model_order_list:
+        model_order_dict = {model_id: i for i, model_id in enumerate(model_order_list)}
+        # Sort models by order list priority, with fallback for those not in the list
+        models.sort(
+            key=lambda x: (model_order_dict.get(x["id"], float("inf")), x["name"])
+        )
 
     # Filter out models that the user does not have access to
     if user.role == "user":
